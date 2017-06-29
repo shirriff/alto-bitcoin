@@ -1,0 +1,56 @@
+get "streams.d"
+external
+[
+// Outgoing procedures
+InitPic; DisplayPic;
+
+// Incoming procedures
+OpenFile; Gets; Ws; Wns; Allocate; SysErr;
+sysZone; keys; dsp;
+]
+
+static [ dcb ]
+
+let InitPic(filename) be
+[
+let f = OpenFile(filename, ksTypeReadOnly)
+// File starts with x and y dimensions
+let x = Gets(f)
+let y = Gets(f)
+
+let wordsPerLine = (x + 15) / 16
+let words = wordsPerLine * y
+if words ge 30705 do
+[
+   Ws("Image too big: ")
+   Wns(dsp, words)
+   Ws("*N")
+   Gets(keys)
+   SysErr()
+]
+// Remainder of file is raw data in Alto pixel format
+let v = vec 30705
+v = (v + 1) & -2 // double-word align
+for i = 0 to words - 1 do
+[
+   v!i = Gets(f)
+]
+
+// Set up display control block, but don't use it yet
+dcb = Allocate(sysZone, 5)
+dcb = (dcb + 1) & -2
+dcb!0 = 0 // End of display list
+dcb!1 = 16384 % wordsPerLine // 16384 = white on black
+dcb!2 = v // Data pointer
+dcb!3 = y / 2 // # lines / 2
+]
+
+//-----------------------------------------------------------------------------------------
+and DisplayPic() be
+//-----------------------------------------------------------------------------------------
+[
+let lvdas = #420
+
+dcb!0 = lvdas!0 // link into list
+lvdas!0 = dcb
+]

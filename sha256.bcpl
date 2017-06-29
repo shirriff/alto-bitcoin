@@ -1,0 +1,242 @@
+get "streams.d"
+external
+[
+// Outgoing procedures
+Sha256PartialChunk; Sha256Init; Sha256Chunk;
+
+// Incoming procedures
+MulFull; DoubleAdd;
+]
+
+//-----------------------------------------------------------------------------------------
+let Sha256PartialChunk(a, b) be
+//-----------------------------------------------------------------------------------------
+// Sha256 requires chunks to be 512 bits (64 bytes, 32 words) long.
+// For a partial chunk at address a with total message length b bytes, add the padding to the chunk.
+// This does minimal padding for Bitcoin and doesn't handle all lengths
+// Assumes b is even
+[
+   let partialLen = b & 63 // Length of the partial chunk in bytes
+   let w = partialLen / 2 // Length of the partial chunk in words
+   a!w = #100000 // Append 1 bit
+   for i = w + 1 to 30 do a!i = 0 // Clear remainder
+   a!31 = b * 8 // Total length in bits
+]
+
+//-----------------------------------------------------------------------------------------
+// hash = vec 16 of storage for result.
+and Sha256Init(hash) be
+//-----------------------------------------------------------------------------------------
+[
+hash!0 = #65011
+hash!1 = #163147 // 0x6a09e667
+hash!2 = #135547
+hash!3 = #127205 // 0xbb67ae85
+hash!4 = #36156
+hash!5 = #171562 // 0x3c6ef372
+hash!6 = #122517
+hash!7 = #172472 // 0xa54ff53a
+hash!8 = #50416
+hash!9 = #51177 // 0x510e527f
+hash!10 = #115405
+hash!11 = #64214 // 0x9b05688c
+hash!12 = #17603
+hash!13 = #154653 // 0x1f83d9ab
+hash!14 = #55740
+hash!15 = #146431 // 0x5be0cd19
+]
+
+//-----------------------------------------------------------------------------------------
+and Sha256Chunk(hash, chunk) be
+//-----------------------------------------------------------------------------------------
+[
+let w = vec 128 // 64-entry message schedule array
+for i = 0 to 31 do w!i = chunk!i // Copy first 16 words of chunk into w
+let s0 = vec 2
+let s1 = vec 2
+for i = 16 to 63 do
+[
+   // s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)
+   let i0 = 2*i - 30
+   let i1 = i0 + 1
+   s0!0 = (w!i0 rshift 7 + w!i1 lshift 9) xor (w!i0 lshift 14 + w!i1 rshift 2) xor (w!i0 rshift 3)
+   s0!1 = (w!i1 rshift 7 + w!i0 lshift 9) xor (w!i1 lshift 14 + w!i0 rshift 2) xor (w!i1 rshift 3 + w!i0 lshift 13)
+
+   // s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift 10)
+   i0 = 2*i - 4
+   i1 = i0 + 1
+   s1!0 = (w!i0 lshift 15 + w!i1 rshift 1) xor (w!i0 lshift 13 + w!i1 rshift 3) xor (w!i0 rshift 10)
+   s1!1 = (w!i1 lshift 15 + w!i0 rshift 1) xor (w!i1 lshift 13 + w!i0 rshift 3) xor (w!i1 rshift 10 + w!i0 lshift 6)
+
+   // w[i] := w[i-16] + s0 + w[i-7] + s1
+   w!(2*i) = w!(2*i-32)
+   w!(2*i+1) = w!(2*i-31)
+   DoubleAdd(w + 2*i, s0)
+   DoubleAdd(w + 2*i, w + 2*i - 14)
+   DoubleAdd(w + 2*i, s1)
+]
+
+let a = vec 2
+let b = vec 2
+let c = vec 2
+let d = vec 2
+let e = vec 2
+let f = vec 2
+let g = vec 2
+let h = vec 2
+
+let k = table [ #41212; #27630; // 0x428a2f98
+   #70467; #42221; // 0x71374491
+   #132700; #175717; // 0xb5c0fbcf
+   #164665; #155645; // 0xe9b5dba5
+   #34526; #141133; // 0x3956c25b
+   #54761; #10761; // 0x59f111f1
+   #111077; #101244; // 0x923f82a4
+   #125434; #57325; // 0xab1c5ed5
+   #154007; #125230; // 0xd807aa98
+   #11203; #55401; // 0x12835b01
+   #22061; #102676; // 0x243185be
+   #52414; #76703; // 0x550c7dc3
+   #71276; #56564; // 0x72be5d74
+   #100336; #130776; // 0x80deb1fe
+   #115734; #3247; // 0x9bdc06a7
+   #140633; #170564; // 0xc19bf174
+   #162233; #64701; // 0xe49b69c1
+   #167676; #43606; // 0xefbe4786
+   #7701; #116706; // 0x0fc19dc6
+   #22014; #120714; // 0x240ca1cc
+   #26751; #26157; // 0x2de92c6f
+   #45164; #102252; // 0x4a7484aa
+   #56260; #124734; // 0x5cb0a9dc
+   #73371; #104332; // 0x76f988da
+   #114076; #50522; // 0x983e5152
+   #124061; #143155; // 0xa831c66d
+   #130003; #23710; // 0xb00327c8
+   #137531; #77707; // 0xbf597fc7
+   #143340; #5763; // 0xc6e00bf3
+   #152647; #110507; // 0xd5a79147
+   #3312; #61521; // 0x06ca6351
+   #12051; #24547; // 0x14292967
+   #23667; #5205; // 0x27b70a85
+   #27033; #20470; // 0x2e1b2138
+   #46454; #66774; // 0x4d2c6dfc
+   #51470; #6423; // 0x53380d13
+   #62412; #71524; // 0x650a7354
+   #73152; #5273; // 0x766a0abb
+   #100702; #144456; // 0x81c2c92e
+   #111162; #26205; // 0x92722c85
+   #121277; #164241; // 0xa2bfe8a1
+   #124032; #63113; // 0xa81a664b
+   #141113; #105560; // 0xc24b8b70
+   #143554; #50643; // 0xc76c51a3
+   #150622; #164031; // 0xd192e819
+   #153231; #3044; // 0xd6990624
+   #172016; #32605; // 0xf40e3585
+   #10152; #120160; // 0x106aa070
+   #14644; #140426; // 0x19a4c116
+   #17067; #66010; // 0x1e376c08
+   #23510; #73514; // 0x2748774c
+   #32260; #136265; // 0x34b0bcb5
+   #34434; #6263; // 0x391c0cb3
+   #47330; #125112; // 0x4ed8aa4a
+   #55634; #145117; // 0x5b9cca4f
+   #64056; #67763; // 0x682e6ff3
+   #72217; #101356; // 0x748f82ee
+   #74245; #61557; // 0x78a5636f
+   #102310; #74024; // 0x84c87814
+   #106307; #1010; // 0x8cc70208
+   #110276; #177772; // 0x90befffa
+   #122120; #66353; // 0xa4506ceb
+   #137371; #121767; // 0xbef9a3f7
+   #143161; #74362; ] // 0xc67178f2
+
+a!0 = hash!0 // h0
+a!1 = hash!1
+b!0 = hash!2 // h1
+b!1 = hash!3
+c!0 = hash!4 // h2
+c!1 = hash!5
+d!0 = hash!6 // h3
+d!1 = hash!7
+e!0 = hash!8 // h4
+e!1 = hash!9
+f!0 = hash!10 // h5
+f!1 = hash!11
+g!0 = hash!12 // h6
+g!1 = hash!13
+h!0 = hash!14 // h7
+h!1 = hash!15
+
+let S1 = vec 2
+let ch = vec 2
+let temp1 = vec 2
+let S0 = vec 2
+let maj = vec 2
+let temp2 = vec 2
+for i = 0 to 63 do
+   [
+     // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
+     S1!0 = (e!0 rshift 6 + e!1 lshift 10) xor (e!0 rshift 11 + e!1 lshift 5) xor (e!0 lshift 7 + e!1 rshift 9)
+     S1!1 = (e!1 rshift 6 + e!0 lshift 10) xor (e!1 rshift 11 + e!0 lshift 5) xor (e!1 lshift 7 + e!0 rshift 9)
+
+     // ch := (e and f) xor ((not e) and g)
+     ch!0 = (e!0 & f!0) xor ((not e!0) & g!0)
+     ch!1 = (e!1 & f!1) xor ((not e!1) & g!1)
+
+     // temp1 := h + S1 + ch + k[i] + w[i]
+     temp1!0 = h!0
+     temp1!1 = h!1
+     DoubleAdd(temp1, S1)
+     DoubleAdd(temp1, ch)
+     DoubleAdd(temp1, k + 2*i)
+     DoubleAdd(temp1, w + 2*i)
+
+     // S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)
+     S0!0 = (a!0 rshift 2 + a!1 lshift 14) xor (a!0 rshift 13 + a!1 lshift 3) xor (a!0 lshift 10 + a!1 rshift 6)
+     S0!1 = (a!1 rshift 2 + a!0 lshift 14) xor (a!1 rshift 13 + a!0 lshift 3) xor (a!1 lshift 10 + a!0 rshift 6)
+
+     // maj := (a and b) xor (a and c) xor (b and c)
+     maj!0 = (a!0 & b!0) xor (a!0 & c!0) xor (b!0 & c!0)
+     maj!1 = (a!1 & b!1) xor (a!1 & c!1) xor (b!1 & c!1)
+
+     // temp2 := S0 + maj
+     temp2!0 = S0!0
+     temp2!1 = S0!1
+     DoubleAdd(temp2, maj)
+
+     h!0 = g!0
+     h!1 = g!1
+
+     g!0 = f!0
+     g!1 = f!1
+
+     f!0 = e!0
+     f!1 = e!1
+
+     e!0 = d!0
+     e!1 = d!1
+     DoubleAdd(e, temp1)
+
+     d!0 = c!0
+     d!1 = c!1
+
+     c!0 = b!0
+     c!1 = b!1
+
+     b!0 = a!0
+     b!1 = a!1
+
+     a!0 = temp1!0
+     a!1 = temp1!1
+     DoubleAdd(a, temp2)
+   ]
+
+   DoubleAdd(hash, a) // h0 += a
+   DoubleAdd(hash+2, b) // h1 += b
+   DoubleAdd(hash+4, c) // h2 += c
+   DoubleAdd(hash+6, d) // h3 += d
+   DoubleAdd(hash+8, e) // h4 += e
+   DoubleAdd(hash+10, f) // h5 += f
+   DoubleAdd(hash+12, g) // h6 += g
+   DoubleAdd(hash+14, h) // h7 += h
+]

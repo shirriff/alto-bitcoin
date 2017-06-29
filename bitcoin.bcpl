@@ -1,0 +1,121 @@
+get "streams.d"
+external
+[
+// Incoming procedures
+Sha256PartialChunk; Sha256Init; Sha256Chunk; InitPic; DisplayPic;
+
+Wl; Ws; Wns; Wss;
+keys; dsp; Gets; Puts;
+]
+
+// Definition of fields in a Bitcoin block header
+structure HEADER:
+[
+version^1,2 word
+prevHash^1,16 word
+merkleRoot^1,16 word
+timestamp^1,2 word
+bits^1,2 word
+nonce^1,2 word
+]
+
+let Main() be
+[
+InitPic("img")
+// Create a header
+let header = vec 64
+header>>HEADER.version^1 = #1000
+header>>HEADER.version^2 = #0; // 0x02000000
+
+header>>HEADER.prevHash^1 = #13627
+header>>HEADER.prevHash^2 = #55627; // 0x17975b97
+header>>HEADER.prevHash^3 = #140616
+header>>HEADER.prevHash^4 = #150767; // 0xc18ed1f7
+header>>HEADER.prevHash^5 = #161125
+header>>HEADER.prevHash^6 = #126762; // 0xe255adf2
+header>>HEADER.prevHash^7 = #113531
+header>>HEADER.prevHash^8 = #115525; // 0x97599b55
+header>>HEADER.prevHash^9 = #31416
+header>>HEADER.prevHash^10 = #155270; // 0x330edab8
+header>>HEADER.prevHash^11 = #74003
+header>>HEADER.prevHash^12 = #144027; // 0x7803c817
+header>>HEADER.prevHash^13 = #400
+header>>HEADER.prevHash^14 = #0; // 0x01000000
+header>>HEADER.prevHash^15 = #0
+header>>HEADER.prevHash^16 = #0; // 0x00000000
+
+header>>HEADER.merkleRoot^1 = #105227
+header>>HEADER.merkleRoot^2 = #24532; // 0x8a97295a
+header>>HEADER.merkleRoot^3 = #23507
+header>>HEADER.merkleRoot^4 = #132361; // 0x2747b4f1
+header>>HEADER.merkleRoot^5 = #120263
+header>>HEADER.merkleRoot^6 = #112215; // 0xa0b3948d
+header>>HEADER.merkleRoot^7 = #171631
+header>>HEADER.merkleRoot^8 = #1504; // 0xf3990344
+header>>HEADER.merkleRoot^9 = #140341
+header>>HEADER.merkleRoot^10 = #117646; // 0xc0e19fa6
+header>>HEADER.merkleRoot^11 = #131271
+header>>HEADER.merkleRoot^12 = #25472; // 0xb2b92b3a
+header>>HEADER.merkleRoot^13 = #14710
+header>>HEADER.merkleRoot^14 = #163272; // 0x19c8e6ba
+header>>HEADER.merkleRoot^15 = #156024
+header>>HEADER.merkleRoot^16 = #13607; // 0xdc141787
+
+header>>HEADER.timestamp^1 = #32613
+header>>HEADER.timestamp^2 = #2523; // 0x358b0553
+
+header>>HEADER.bits^1 = #51537
+header>>HEADER.bits^2 = #431; // 0x535f0119
+
+header>>HEADER.nonce^1 = #44165
+header>>HEADER.nonce^2 = #4063; // 0x48750833
+
+// The basic idea of mining is to find a header that when sha256 hashed twice,
+// the hash ends with enough zeros. This extraordinarily rare hash indicates a successful
+// mine.
+
+// The header is 80 bytes long, while sha256 operates on 64 byte chunks.
+// So we have to apply the sha256 loop twice to hash the header (once on each chunk),
+// and then a third time on 256-bit (32 byte) result to get the final hash.
+
+for nonce = #4030 to #4063 do
+   [
+   header>>HEADER.nonce^2 = nonce; // Change the nonce each time through the loop
+   Wns(dsp, nonce)
+   Ws(" ")
+
+   let firstHash = vec 32 // Hash is 16 words, but need 32 words for input to second hash
+   Sha256Init(firstHash)
+   Sha256Chunk(firstHash, header)
+
+   // Need to pad the second chunk of the 80-byte header to a multiple of 512 bits
+   Sha256PartialChunk(header + 32, 80)
+   Sha256Chunk(firstHash, header + 32)
+
+   let secondHash = vec 16
+
+   // Now do the second hash on the first hash
+   Sha256Init(secondHash)
+   Sha256PartialChunk(firstHash, 32) // Add padding. This 256-bit chunk has 32 bytes
+   Sha256Chunk(secondHash, firstHash)
+   for i = 0 to 15 do WriteHex16(dsp, secondHash!i)
+   Ws("*N")
+   if secondHash!15 eq 0 & secondHash!14 eq 0 & secondHash!13 eq 0 & secondHash!12 eq 0 do
+      [
+      Ws("A successful hash was found!*N")
+      DisplayPic()
+      Gets(keys)
+      return
+      ]
+   ]
+]
+
+and WriteHex16(s, n) be
+//-----------------------------------------------------------------------------------------
+[
+let c = table [ 48; 49; 50; 51; 52; 53; 54; 55; 56; 57; 97; 98; 99; 100; 101; 102 ]
+Puts(s, c!((n rshift 12) & 15))
+Puts(s, c!((n rshift 8) & 15))
+Puts(s, c!((n rshift 4) & 15))
+Puts(s, c!((n rshift 0) & 15))
+]
